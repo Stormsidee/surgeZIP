@@ -1,6 +1,6 @@
-from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem, QRubberBand, QApplication
+from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem, QRubberBand, QApplication, QHeaderView
 from PyQt5.QtCore import Qt, QMimeData, QUrl, QRect, QPoint
-from PyQt5.QtGui import QDrag, QMouseEvent
+from PyQt5.QtGui import QDrag, QBrush, QColor
 import os
 import tempfile
 import shutil
@@ -15,13 +15,19 @@ class DragDropTreeWidget(QTreeWidget):
         self.setDragEnabled(True)
         self.setSelectionMode(QTreeWidget.ExtendedSelection)
         
+        # Настройка внешнего вида
+        self.setRootIsDecorated(False)
+        self.setIndentation(15)
+        
         # Для выделения области
         self.rubber_band = None
         self.rubber_band_start = None
         self.drag_start_pos = None
         
-        # Включаем отслеживание мыши для выделения области
-        self.setMouseTracking(False)
+        # Устанавливаем стиль заголовков
+        header = self.header()
+        header.setStretchLastSection(True)
+        header.setDefaultAlignment(Qt.AlignLeft)
         
     def set_archive_path(self, archive_path):
         """Установить путь к текущему архиву"""
@@ -33,12 +39,15 @@ class DragDropTreeWidget(QTreeWidget):
             self.drag_start_pos = event.pos()
             item = self.itemAt(event.pos())
             
-            # Если клик не на элементе - начинаем выделение области
-            if not item:
+            # Если клик на заголовке или вне элементов - начинаем выделение области
+            if not item or self.indexAt(event.pos()).column() == -1:
                 self.rubber_band_start = event.pos()
-                self.rubber_band = QRubberBand(QRubberBand.Rectangle, self)
+                self.rubber_band = QRubberBand(QRubberBand.Rectangle, self.viewport())
                 self.rubber_band.setGeometry(QRect(self.rubber_band_start, QPoint()))
                 self.rubber_band.show()
+                
+                # Снимаем выделение со всех элементов
+                self.clearSelection()
             else:
                 # Если клик на элементе - обычное поведение
                 super().mousePressEvent(event)
@@ -49,20 +58,29 @@ class DragDropTreeWidget(QTreeWidget):
         """Обработка движения мыши для выделения области и начала drag-and-drop"""
         # Обработка выделения области
         if self.rubber_band and self.rubber_band_start:
-            # Обновляем область выделения
+            # Обновляем область выделения от курсора
             rect = QRect(self.rubber_band_start, event.pos()).normalized()
             self.rubber_band.setGeometry(rect)
             
             # Выделяем элементы внутри области
-            self.clearSelection()
             for i in range(self.topLevelItemCount()):
                 item = self.topLevelItem(i)
                 rect_item = self.visualItemRect(item)
-                if rect.intersects(rect_item):
+                # Преобразуем координаты в координаты виджета
+                rect_item_top_left = self.visualItemRect(item).topLeft()
+                rect_item_bottom_right = self.visualItemRect(item).bottomRight()
+                item_rect = QRect(self.mapToGlobal(rect_item_top_left), 
+                                 self.mapToGlobal(rect_item_bottom_right))
+                widget_rect = QRect(self.mapFromGlobal(item_rect.topLeft()),
+                                   self.mapFromGlobal(item_rect.bottomRight()))
+                
+                if rect.intersects(widget_rect):
                     item.setSelected(True)
+                else:
+                    item.setSelected(False)
         
-        # Проверяем начало перетаскивания
-        elif self.drag_start_pos and (event.pos() - self.drag_start_pos).manhattanLength() > 10:
+        # Проверяем начало перетаскивания (только если не выделяем область)
+        elif self.drag_start_pos and (event.pos() - self.drag_start_pos).manhattanLength() > 15:
             # Начинаем перетаскивание
             selected_items = self.selectedItems()
             if selected_items and self.archive_path:
@@ -70,18 +88,10 @@ class DragDropTreeWidget(QTreeWidget):
                 if mime_data:
                     drag = QDrag(self)
                     drag.setMimeData(mime_data)
-                    
-                    # Устанавливаем курсор для перетаскивания
-                    from PyQt5.QtGui import QCursor
-                    drag.setDragCursor(QCursor(Qt.DragMoveCursor).pixmap(), Qt.MoveAction)
-                    
-                    drag.exec_(Qt.CopyAction)
+                    drag.exec_(Qt.CopyAction | Qt.MoveAction)
                     
                     # Сбрасываем позиции
                     self.drag_start_pos = None
-                    if self.rubber_band:
-                        self.rubber_band.hide()
-                        self.rubber_band = None
                     return
         
         super().mouseMoveEvent(event)
@@ -119,7 +129,6 @@ class DragDropTreeWidget(QTreeWidget):
                     'name': data['name'],
                     'path': data['path'].rstrip('/') + '/'
                 })
-            # Игнорируем 'up' (..)
         
         if not files_to_drag and not folders_to_drag:
             return None
@@ -133,7 +142,6 @@ class DragDropTreeWidget(QTreeWidget):
                 # Обрабатываем файлы
                 for file_path in files_to_drag:
                     try:
-                        # Извлекаем файл во временную директорию
                         temp_file_path = os.path.join(temp_dir, os.path.basename(file_path))
                         os.makedirs(os.path.dirname(temp_file_path), exist_ok=True)
                         
@@ -144,44 +152,35 @@ class DragDropTreeWidget(QTreeWidget):
                     except Exception as e:
                         print(f"Ошибка при подготовке файла {file_path}: {e}")
                 
-                # Обрабатываем папки - ВАЖНО: извлекаем ВСЮ папку со структурой!
+                # Обрабатываем папки
                 for folder_data in folders_to_drag:
                     try:
                         folder_name = folder_data['name']
                         folder_path = folder_data['path']
                         
-                        # Создаем папку во временной директории
                         temp_folder_path = os.path.join(temp_dir, folder_name)
                         os.makedirs(temp_folder_path, exist_ok=True)
                         
-                        # Находим все файлы в этой папке (включая вложенные)
                         for file_info in zipf.infolist():
                             if file_info.filename.startswith(folder_path):
-                                # Относительный путь внутри папки
                                 relative_path = file_info.filename[len(folder_path):]
                                 if relative_path and not file_info.filename.endswith('/'):
-                                    # Полный путь во временной директории
                                     dest_path = os.path.join(temp_folder_path, relative_path)
                                     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                                     
-                                    # Извлекаем файл
                                     with zipf.open(file_info.filename) as source, open(dest_path, 'wb') as target:
                                         target.write(source.read())
                         
-                        # Добавляем саму папку в список для перетаскивания
                         temp_files.append(temp_folder_path)
                     except Exception as e:
                         print(f"Ошибка при подготовке папки {folder_data['name']}: {e}")
             
             if temp_files:
-                # Создаем MIME данные с URL файлов и папок
                 mime_data = QMimeData()
                 urls = [QUrl.fromLocalFile(f) for f in temp_files]
                 mime_data.setUrls(urls)
                 
-                # Настраиваем очистку через 30 секунд
                 self.cleanup_temp_dir(temp_dir)
-                
                 return mime_data
             else:
                 shutil.rmtree(temp_dir, ignore_errors=True)
@@ -199,13 +198,12 @@ class DragDropTreeWidget(QTreeWidget):
         import time
         
         def cleanup():
-            time.sleep(30)  # Ждем 30 секунд (больше времени для перетаскивания)
+            time.sleep(30)
             if os.path.exists(temp_dir):
                 try:
                     shutil.rmtree(temp_dir, ignore_errors=True)
                 except:
                     pass
         
-        # Запускаем очистку в отдельном потоке
         thread = threading.Thread(target=cleanup, daemon=True)
         thread.start()

@@ -69,8 +69,49 @@ def register_file_associations():
             with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
                                 f"{prog_id}\\shell\\open\\command") as key:
                 winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} "%1"')
+            
+            # Добавляем команду "Extract to" в контекстное меню
+            with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                                f"{prog_id}\\shell\\extractto") as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Extract to...")
+                winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path + ",0")
+            
+            with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                                f"{prog_id}\\shell\\extractto\\command") as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} --extract-to "%1"')
         
-        print("Ассоциации файлов успешно зарегистрированы!")
+        # Добавляем команду "Compress" в контекстное меню для всех файлов и папок
+        # Для папок
+        with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                            "Directory\\Background\\shell\\ModernArchiverCompress") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Compress with ModernArchiver")
+            winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path + ",0")
+        
+        with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                            "Directory\\Background\\shell\\ModernArchiverCompress\\command") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} --compress %V')
+        
+        # Для файлов
+        with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                            "*\\shell\\ModernArchiverCompress") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Compress with ModernArchiver")
+            winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path + ",0")
+        
+        with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                            "*\\shell\\ModernArchiverCompress\\command") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} --compress "%1"')
+        
+        # Для папок (не background)
+        with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                            "Directory\\shell\\ModernArchiverCompress") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Compress with ModernArchiver")
+            winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path + ",0")
+        
+        with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                            "Directory\\shell\\ModernArchiverCompress\\command") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} --compress "%1"')
+        
+        print("Ассоциации файлов и контекстное меню успешно зарегистрированы!")
         print("Перезапустите проводник или компьютер для применения изменений.")
         
         # Обновляем проводник
@@ -104,6 +145,8 @@ def unregister_file_associations():
         
         for prog_id in prog_ids:
             try:
+                winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, f"{prog_id}\\shell\\extractto\\command")
+                winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, f"{prog_id}\\shell\\extractto")
                 winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, f"{prog_id}\\shell\\open\\command")
                 winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, f"{prog_id}\\DefaultIcon")
                 winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, f"{prog_id}\\shell\\open")
@@ -112,7 +155,26 @@ def unregister_file_associations():
             except:
                 pass
         
-        print("Ассоциации файлов удалены!")
+        # Удаляем команды сжатия
+        try:
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\Background\\shell\\ModernArchiverCompress\\command")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\Background\\shell\\ModernArchiverCompress")
+        except:
+            pass
+        
+        try:
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "*\\shell\\ModernArchiverCompress\\command")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "*\\shell\\ModernArchiverCompress")
+        except:
+            pass
+        
+        try:
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\shell\\ModernArchiverCompress\\command")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\shell\\ModernArchiverCompress")
+        except:
+            pass
+        
+        print("Ассоциации файлов и контекстное меню удалены!")
         
     except Exception as e:
         print(f"Ошибка при удалении: {e}")
