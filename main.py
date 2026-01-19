@@ -97,7 +97,7 @@ class ModernArchiver(QMainWindow):
         title_layout.setContentsMargins(15, 0, 10, 0)
         
         # Иконка и название
-        title_label = QLabel("ModernArchiver")
+        title_label = QLabel("surgeZIP")
         title_label.setStyleSheet("color: #CCCCCC; font-weight: 600; font-size: 11px;")
         
         # Кнопки управления окном
@@ -213,7 +213,7 @@ class ModernArchiver(QMainWindow):
         """)
         
         # Размер окна
-        self.setGeometry(100, 100, 1000, 800)
+        self.setGeometry(100, 100, 900, 800)
         self.setWindowOpacity(0.9)
         
         # Настраиваем drag-and-drop
@@ -276,25 +276,41 @@ class ModernArchiver(QMainWindow):
         
         self.drag_start_pos = None
         self.drag_item = None
+        self.saved_selection = None
     
     def tree_mouse_press(self, event):
         if event.button() == Qt.LeftButton:
             self.drag_start_pos = event.pos()
             item = self.tree_widget.itemAt(event.pos())
             self.drag_item = item
-            # Не сбрасываем выделение если нажали на выделенный item при множественном выделении
-            if not (item and item in self.tree_widget.selectedItems() and len(self.tree_widget.selectedItems()) > 1):
-                QTreeWidget.mousePressEvent(self.tree_widget, event)
-        else:
-            QTreeWidget.mousePressEvent(self.tree_widget, event)
+            
+            selected = self.tree_widget.selectedItems()
+            # Если выделено несколько и нажали на выделенный - сохраняем выделение и блокируем обработку
+            if item and item in selected and len(selected) > 1:
+                self.saved_selection = list(selected)
+                event.accept()
+                return
+        
+        QTreeWidget.mousePressEvent(self.tree_widget, event)
     
     def tree_mouse_move(self, event):
+        # Восстанавливаем сохраненное выделение перед началом drag
+        if self.saved_selection and not (event.buttons() & Qt.LeftButton):
+            self.saved_selection = None
+        
         if not (event.buttons() & Qt.LeftButton) or not self.drag_start_pos:
             QTreeWidget.mouseMoveEvent(self.tree_widget, event)
             return
         
         distance = (event.pos() - self.drag_start_pos).manhattanLength()
         if distance > 15 and self.drag_item and self.drag_item in self.tree_widget.selectedItems():
+            # Восстанавливаем сохраненное выделение перед drag
+            if self.saved_selection:
+                self.tree_widget.clearSelection()
+                for item in self.saved_selection:
+                    item.setSelected(True)
+                self.saved_selection = None
+            
             self.start_drag()
             self.drag_start_pos = None
             self.drag_item = None
@@ -591,7 +607,7 @@ class ModernArchiver(QMainWindow):
             self.display_archive_contents("")
             
             # Обновляем заголовок окна
-            self.setWindowTitle(f"ModernArchiver - {os.path.basename(archive_path)}")
+            self.setWindowTitle(f"surgeZIP - {os.path.basename(archive_path)}")
             
         except Exception as e:
             QMessageBox.critical(self, "Ошибка", f"Не удалось открыть архив:\n{str(e)}")
@@ -659,10 +675,16 @@ class ModernArchiver(QMainWindow):
                                     'name': name,
                                     'info': file_info
                                 })
+                        elif len(parts) > 1:
+                            # Добавляем первую папку в пути
+                            first_folder = parts[0]
+                            if first_folder:
+                                folders.add(first_folder)
                 else:
                     if '/' in filepath:
-                        first_part = filepath.split('/')[0]
-                        if filepath.endswith('/'):
+                        parts = filepath.split('/')
+                        first_part = parts[0]
+                        if first_part:
                             folders.add(first_part)
                     else:
                         if not filepath.endswith('/'):

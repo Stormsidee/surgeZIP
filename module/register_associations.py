@@ -21,36 +21,45 @@ def register_file_associations():
         )
         return
     
-    # Путь к исполняемому файлу (после сборки в .exe)
-    app_path = os.path.abspath(sys.argv[0])
-    if not app_path.endswith('.exe'):
-        # В режиме разработки используем python
-        app_path = f'"{sys.executable}" "{app_path}"'
+    # Ищем скомпилированный exe файл
+    app_path = None
+    
+    # Проверяем в текущей директории
+    if os.path.exists("surgeZIP.exe"):
+        app_path = os.path.abspath("surgeZIP.exe")
+    # Проверяем в папке build
+    elif os.path.exists("build/surgeZIP/surgeZIP.exe"):
+        app_path = os.path.abspath("build/surgeZIP/surgeZIP.exe")
+    # Если exe не найден, используем python
+    else:
+        main_py = os.path.abspath("main.py")
+        app_path = f'"{sys.executable}" "{main_py}"'
+        print("EXE файл не найден, используется Python для регистрации")
     
     # Расширения для регистрации
     extensions = {
-        '.zip': 'ModernArchiver.ZIP',
-        '.rar': 'ModernArchiver.RAR', 
-        '.7z': 'ModernArchiver.7Z',
-        '.tar': 'ModernArchiver.TAR',
-        '.gz': 'ModernArchiver.GZ',
-        '.bz2': 'ModernArchiver.BZ2'
+        '.zip': 'surgeZIP.ZIP',
+        '.rar': 'surgeZIP.RAR', 
+        '.7z': 'surgeZIP.7Z',
+        '.tar': 'surgeZIP.TAR',
+        '.gz': 'surgeZIP.GZ',
+        '.bz2': 'surgeZIP.BZ2'
     }
     
     try:
         # Основной ключ программы
-        with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, "ModernArchiver") as key:
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Файл ModernArchiver")
-            winreg.SetValueEx(key, "FriendlyTypeName", 0, winreg.REG_SZ, "Архив ModernArchiver")
+        with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, "surgeZIP") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Файл surgeZIP")
+            winreg.SetValueEx(key, "FriendlyTypeName", 0, winreg.REG_SZ, "Архив surgeZIP")
             
         # Команда открытия
         with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
-                            "ModernArchiver\\shell\\open\\command") as key:
+                            "surgeZIP\\shell\\open\\command") as key:
             winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} "%1"')
         
         # Иконка
         with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
-                            "ModernArchiver\\DefaultIcon") as key:
+                            "surgeZIP\\DefaultIcon") as key:
             # Нужно будет указать путь к иконке .ico
             winreg.SetValueEx(key, "", 0, winreg.REG_SZ, app_path + ",0")
         
@@ -70,11 +79,21 @@ def register_file_associations():
                                 f"{prog_id}\\shell\\open\\command") as key:
                 winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} "%1"')
             
+            # Добавляем команду "Extract" в контекстное меню
+            with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                                f"{prog_id}\\shell\\extract") as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Open with surgeZIP")
+                winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path if app_path.endswith('.exe') else f'"{app_path}"')
+            
+            with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
+                                f"{prog_id}\\shell\\extract\\command") as key:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} "%1"')
+            
             # Добавляем команду "Extract to" в контекстное меню
             with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
                                 f"{prog_id}\\shell\\extractto") as key:
                 winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Extract to...")
-                winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path + ",0")
+                winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path if app_path.endswith('.exe') else f'"{app_path}"')
             
             with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
                                 f"{prog_id}\\shell\\extractto\\command") as key:
@@ -83,32 +102,32 @@ def register_file_associations():
         # Добавляем команду "Compress" в контекстное меню для всех файлов и папок
         # Для папок
         with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
-                            "Directory\\Background\\shell\\ModernArchiverCompress") as key:
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Compress with ModernArchiver")
+                            "Directory\\Background\\shell\\surgeZIPCompress") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Compress with surgeZIP")
             winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path + ",0")
         
         with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
-                            "Directory\\Background\\shell\\ModernArchiverCompress\\command") as key:
+                            "Directory\\Background\\shell\\surgeZIPCompress\\command") as key:
             winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} --compress %V')
         
         # Для файлов
         with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
-                            "*\\shell\\ModernArchiverCompress") as key:
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Compress with ModernArchiver")
+                            "*\\shell\\surgeZIPCompress") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Compress with surgeZIP")
             winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path + ",0")
         
         with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
-                            "*\\shell\\ModernArchiverCompress\\command") as key:
+                            "*\\shell\\surgeZIPCompress\\command") as key:
             winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} --compress "%1"')
         
         # Для папок (не background)
         with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
-                            "Directory\\shell\\ModernArchiverCompress") as key:
-            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Compress with ModernArchiver")
+                            "Directory\\shell\\surgeZIPCompress") as key:
+            winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "Compress with surgeZIP")
             winreg.SetValueEx(key, "Icon", 0, winreg.REG_SZ, app_path + ",0")
         
         with winreg.CreateKey(winreg.HKEY_CLASSES_ROOT, 
-                            "Directory\\shell\\ModernArchiverCompress\\command") as key:
+                            "Directory\\shell\\surgeZIPCompress\\command") as key:
             winreg.SetValueEx(key, "", 0, winreg.REG_SZ, f'{app_path} --compress "%1"')
         
         print("Ассоциации файлов и контекстное меню успешно зарегистрированы!")
@@ -132,9 +151,9 @@ def unregister_file_associations():
         return
     
     extensions = ['.zip', '.rar', '.7z', '.tar', '.gz', '.bz2']
-    prog_ids = ['ModernArchiver', 'ModernArchiver.ZIP', 'ModernArchiver.RAR', 
-                'ModernArchiver.7Z', 'ModernArchiver.TAR', 
-                'ModernArchiver.GZ', 'ModernArchiver.BZ2']
+    prog_ids = ['surgeZIP', 'surgeZIP.ZIP', 'surgeZIP.RAR', 
+                'surgeZIP.7Z', 'surgeZIP.TAR', 
+                'surgeZIP.GZ', 'surgeZIP.BZ2']
     
     try:
         for ext in extensions:
@@ -157,20 +176,20 @@ def unregister_file_associations():
         
         # Удаляем команды сжатия
         try:
-            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\Background\\shell\\ModernArchiverCompress\\command")
-            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\Background\\shell\\ModernArchiverCompress")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\Background\\shell\\surgeZIPCompress\\command")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\Background\\shell\\surgeZIPCompress")
         except:
             pass
         
         try:
-            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "*\\shell\\ModernArchiverCompress\\command")
-            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "*\\shell\\ModernArchiverCompress")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "*\\shell\\surgeZIPCompress\\command")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "*\\shell\\surgeZIPCompress")
         except:
             pass
         
         try:
-            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\shell\\ModernArchiverCompress\\command")
-            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\shell\\ModernArchiverCompress")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\shell\\surgeZIPCompress\\command")
+            winreg.DeleteKey(winreg.HKEY_CLASSES_ROOT, "Directory\\shell\\surgeZIPCompress")
         except:
             pass
         
