@@ -7,8 +7,8 @@ from pathlib import Path
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QPushButton, QLabel, QTreeWidget, 
                              QTreeWidgetItem, QFileDialog, QMessageBox, 
-                             QHeaderView, QMenu, QAction)
-from PyQt5.QtCore import Qt, QPoint, QSize, QMimeData, QUrl, QTimer
+                             QHeaderView, QMenu, QAction, QRubberBand)
+from PyQt5.QtCore import Qt, QPoint, QSize, QMimeData, QUrl, QTimer, QRect
 from PyQt5.QtGui import (QFont, QPalette, QColor, QIcon, QDrag, QCursor, 
                          QPainter, QBrush, QPen)
 
@@ -271,52 +271,85 @@ class ModernArchiver(QMainWindow):
     
     def setup_drag_and_drop(self):
         """Настройка drag-and-drop"""
+        self.tree_widget.setDragEnabled(False)
         self.tree_widget.mousePressEvent = self.tree_mouse_press
         self.tree_widget.mouseMoveEvent = self.tree_mouse_move
+        self.tree_widget.mouseReleaseEvent = self.tree_mouse_release
         
+        self.rubber_band = None
+        self.rubber_band_start = None
         self.drag_start_pos = None
-        self.drag_item = None
         self.saved_selection = None
     
     def tree_mouse_press(self, event):
         if event.button() == Qt.LeftButton:
             self.drag_start_pos = event.pos()
             item = self.tree_widget.itemAt(event.pos())
-            self.drag_item = item
-            
             selected = self.tree_widget.selectedItems()
-            # Если выделено несколько и нажали на выделенный - сохраняем выделение и блокируем обработку
+            
+            # Если выделено несколько и нажали на выделенный - сохраняем выделение
             if item and item in selected and len(selected) > 1:
                 self.saved_selection = list(selected)
                 event.accept()
                 return
-        
-        QTreeWidget.mousePressEvent(self.tree_widget, event)
+            
+            if not item or self.tree_widget.indexAt(event.pos()).column() == -1:
+                self.rubber_band_start = event.pos()
+                self.rubber_band = QRubberBand(QRubberBand.Rectangle, self.tree_widget.viewport())
+                self.rubber_band.setGeometry(QRect(self.rubber_band_start, QPoint()))
+                self.rubber_band.show()
+                self.tree_widget.clearSelection()
+            else:
+                QTreeWidget.mousePressEvent(self.tree_widget, event)
+        else:
+            QTreeWidget.mousePressEvent(self.tree_widget, event)
     
     def tree_mouse_move(self, event):
         # Восстанавливаем сохраненное выделение перед началом drag
         if self.saved_selection and not (event.buttons() & Qt.LeftButton):
             self.saved_selection = None
         
-        if not (event.buttons() & Qt.LeftButton) or not self.drag_start_pos:
-            QTreeWidget.mouseMoveEvent(self.tree_widget, event)
-            return
-        
-        distance = (event.pos() - self.drag_start_pos).manhattanLength()
-        if distance > 15 and self.drag_item and self.drag_item in self.tree_widget.selectedItems():
-            # Восстанавливаем сохраненное выделение перед drag
-            if self.saved_selection:
-                self.tree_widget.clearSelection()
-                for item in self.saved_selection:
-                    item.setSelected(True)
-                self.saved_selection = None
+        if self.rubber_band and self.rubber_band_start:
+            rect = QRect(self.rubber_band_start, event.pos()).normalized()
+            self.rubber_band.setGeometry(rect)
             
-            self.start_drag()
-            self.drag_start_pos = None
-            self.drag_item = None
-            return
+            for i in range(self.tree_widget.topLevelItemCount()):
+                item = self.tree_widget.topLevelItem(i)
+                item_rect = self.tree_widget.visualItemRect(item)
+                if rect.intersects(item_rect):
+                    item.setSelected(True)
+                else:
+                    item.setSelected(False)
+        
+        elif self.drag_start_pos and (event.pos() - self.drag_start_pos).manhattanLength() > 15:
+            selected_items = self.tree_widget.selectedItems()
+            if selected_items and self.current_archive:
+                # Восстанавливаем сохраненное выделение перед drag
+                if self.saved_selection:
+                    self.tree_widget.clearSelection()
+                    for item in self.saved_selection:
+                        item.setSelected(True)
+                    self.saved_selection = None
+                
+                self.start_drag()
+                self.drag_start_pos = None
+                return
         
         QTreeWidget.mouseMoveEvent(self.tree_widget, event)
+    
+    def tree_mouse_release(self, event):
+        if self.rubber_band:
+            self.rubber_band.hide()
+            self.rubber_band = None
+            self.rubber_band_start = None
+        
+        if self.drag_start_pos:
+            self.drag_start_pos = None
+        
+        if self.saved_selection:
+            self.saved_selection = None
+        
+        QTreeWidget.mouseReleaseEvent(self.tree_widget, event)
     
     def start_drag(self):
         """Начать перетаскивание выбранных файлов"""
@@ -379,8 +412,8 @@ class ModernArchiver(QMainWindow):
                     # Для папок - путь к извлеченной папке
                     folder_name = item['name']
                     folder_path = os.path.join(temp_dir, folder_name)
-                    if os.path.exists(folder_path):
-                        temp_files.append(folder_path)
+                    os.makedirs(folder_path, exist_ok=True)
+                    temp_files.append(folder_path)
             
             if temp_files:
                 # Создаем MIME данные
