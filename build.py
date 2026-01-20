@@ -15,13 +15,7 @@ def build_project():
     # PyInstaller
     subprocess.run([
         "pyinstaller",
-        "--windowed",
-        "--onefile",
-        "--icon=icon.ico",  # Нужно создать иконку
-        "--name=ModernArchiver",
-        "--add-data=zip_module.py;.",
-        "--add-data=archive_manager.py;.",
-        "main.py"
+        "main.spec"
     ])
     
     print("3. Копирование файлов...")

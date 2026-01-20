@@ -357,6 +357,8 @@ class ModernArchiver(QMainWindow):
         if not selected_items or not self.current_archive:
             return
         
+        print(f"Starting drag with {len(selected_items)} items")  # Debug
+        
         # Получаем список файлов для перетаскивания
         files_to_drag = []
         for item in selected_items:
@@ -366,10 +368,13 @@ class ModernArchiver(QMainWindow):
             
             if data.get('type') == 'file':
                 files_to_drag.append(data)
+                print(f"File to drag: {data['full_path']}")  # Debug
             elif data.get('type') == 'folder':
                 files_to_drag.append(data)
+                print(f"Folder to drag: {data['path']}")  # Debug
         
         if not files_to_drag:
+            print("No files to drag")  # Debug
             return
         
         # Создаем временные файлы
@@ -408,12 +413,16 @@ class ModernArchiver(QMainWindow):
                     extracted_path = os.path.join(temp_dir, item['full_path'])
                     if os.path.exists(extracted_path):
                         temp_files.append(extracted_path)
+                        print(f"Added file to temp_files: {extracted_path}")  # Debug
                 elif item.get('type') == 'folder':
                     # Для папок - путь к извлеченной папке
                     folder_name = item['name']
                     folder_path = os.path.join(temp_dir, folder_name)
                     os.makedirs(folder_path, exist_ok=True)
                     temp_files.append(folder_path)
+                    print(f"Added folder to temp_files: {folder_path}")  # Debug
+            
+            print(f"Total temp_files: {len(temp_files)}")  # Debug
             
             if temp_files:
                 # Создаем MIME данные
@@ -458,25 +467,28 @@ class ModernArchiver(QMainWindow):
     
     def extract_rar_to_temp(self, items, temp_dir):
         """Извлечение файлов из RAR во временную директорию"""
+        print(f"Extracting RAR to {temp_dir}")  # Debug
         try:
             import rarfile
             with rarfile.RarFile(self.current_archive, 'r') as rarf:
                 for item in items:
                     if item.get('type') == 'file':
+                        print(f"Extracting file: {item['full_path']}")  # Debug
                         try:
                             rarf.extract(item['full_path'], temp_dir)
-                        except:
-                            pass
+                        except Exception as e:
+                            print(f"Failed to extract file: {e}")  # Debug
                     elif item.get('type') == 'folder':
                         folder_path = item['path'].rstrip('/') + '/'
+                        print(f"Extracting folder: {folder_path}")  # Debug
                         for file_info in rarf.infolist():
                             if file_info.filename.startswith(folder_path):
                                 try:
                                     rarf.extract(file_info.filename, temp_dir)
-                                except:
-                                    pass
+                                except Exception as e:
+                                    print(f"Failed to extract folder file: {e}")  # Debug
         except Exception as e:
-            print(f"Ошибка при извлечении RAR: {e}")
+            print(f"Error in extract_rar_to_temp: {e}")  # Debug
     
     def extract_7z_to_temp(self, items, temp_dir):
         """Извлечение файлов из 7z во временную директорию"""
@@ -1333,7 +1345,50 @@ def main():
     # Обработка аргументов командной строки
     initial_archive = None
     if len(sys.argv) > 1:
-        if sys.argv[1] == '--extract-to' and len(sys.argv) > 2:
+        if sys.argv[1] == '--extract-here' and len(sys.argv) > 2:
+            archive_path = sys.argv[2]
+            if os.path.exists(archive_path):
+                # Извлечь в папку архива
+                extract_dir = os.path.dirname(archive_path)
+                try:
+                    # Определяем формат и извлекаем все
+                    archive_ext = os.path.splitext(archive_path)[1].lower()
+                    if archive_ext == '.zip':
+                        with zipfile.ZipFile(archive_path, 'r') as zipf:
+                            zipf.extractall(extract_dir)
+                    elif archive_ext == '.rar' and HAS_RARFILE:
+                        import rarfile
+                        with rarfile.RarFile(archive_path, 'r') as rarf:
+                            rarf.extractall(extract_dir)
+                    elif archive_ext in ['.7z', '.7zip'] and HAS_PY7ZR:
+                        with py7zr.SevenZipFile(archive_path, 'r') as archive:
+                            archive.extractall(path=extract_dir)
+                    elif archive_ext == '.tar':
+                        with tarfile.open(archive_path, 'r') as tarf:
+                            tarf.extractall(extract_dir)
+                    elif archive_ext == '.gz':
+                        with tarfile.open(archive_path, 'r:gz') as tarf:
+                            tarf.extractall(extract_dir)
+                    elif archive_ext == '.bz2':
+                        with tarfile.open(archive_path, 'r:bz2') as tarf:
+                            tarf.extractall(extract_dir)
+                    elif archive_ext == '.iso' and HAS_PYCDLIB:
+                        import pycdlib
+                        iso = pycdlib.PyCdlib()
+                        iso.open(archive_path)
+                        for dirname, dirlist, filelist in iso.walk(iso_path='/'):
+                            for filename in filelist:
+                                filepath = os.path.join(dirname, filename)
+                                iso_path = filepath.replace('/', '\\')
+                                output_path = os.path.join(extract_dir, filepath)
+                                os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                                iso.get_file_from_iso(output_path, iso_path=iso_path)
+                        iso.close()
+                    QMessageBox.information(None, "Успех", "Файлы успешно извлечены")
+                except Exception as e:
+                    QMessageBox.critical(None, "Ошибка", f"Не удалось извлечь файлы:\n{str(e)}")
+                return  # Выход после извлечения
+        elif sys.argv[1] == '--extract-to' and len(sys.argv) > 2:
             archive_path = sys.argv[2]
             if os.path.exists(archive_path):
                 # Извлечь в выбранную папку
